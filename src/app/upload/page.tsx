@@ -196,19 +196,22 @@ export default function UploadPage() {
       </div>
 
       <div className="mt-6 rounded-lg border border-neutral-200 p-4">
-        <div className="mb-3 flex gap-2 text-sm">
-          <button
-            onClick={() => setTab("file")}
-            className={`rounded px-3 py-1.5 ${tab === "file" ? "bg-neutral-900 text-white" : "border border-neutral-300"}`}
-          >
-            Upload file
-          </button>
-          <button
-            onClick={() => setTab("paste")}
-            className={`rounded px-3 py-1.5 ${tab === "paste" ? "bg-neutral-900 text-white" : "border border-neutral-300"}`}
-          >
-            Paste text
-          </button>
+        <div className="mb-3 flex items-center gap-2 text-sm">
+          <span className="text-xs text-neutral-500">Give us the essay:</span>
+          <div className="inline-flex rounded-md border border-neutral-300 p-0.5">
+            <button
+              onClick={() => setTab("file")}
+              className={`rounded px-3 py-1 ${tab === "file" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"}`}
+            >
+              Upload a file
+            </button>
+            <button
+              onClick={() => setTab("paste")}
+              className={`rounded px-3 py-1 ${tab === "paste" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"}`}
+            >
+              Paste text
+            </button>
+          </div>
         </div>
 
         {tab === "file" ? (
