@@ -264,9 +264,9 @@ export default function UploadPage() {
             <p className="mb-1 font-medium">Please review each row before saving:</p>
             <ul className="ml-4 list-disc space-y-0.5">
               <li>
-                <span className="font-medium">The &ldquo;term&rdquo; column is a guess</span> — it grabs the 1–3 words just
-                before the citation, which is often right (e.g. &ldquo;awareness&rdquo;) but sometimes grabs filler words.
-                Fix any that look wrong.
+                <span className="font-medium">The term is a guess.</span> Each row shows a few candidate terms as
+                buttons (from the heading, the sentence, quoted phrases) — click the right one, or type your own.
+                The parser never invents a citation, but it can guess the wrong term.
               </li>
               <li>
                 <span className="font-medium">Amber-flagged rows have no matching reference.</span> The article title
@@ -283,7 +283,7 @@ export default function UploadPage() {
               <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-600">
                 <tr>
                   <th className="px-3 py-2 w-8"></th>
-                  <th className="px-3 py-2">Term (editable)</th>
+                  <th className="px-3 py-2 w-[28%]">Term — pick or edit</th>
                   <th className="px-3 py-2">Author / Year / Page</th>
                   <th className="px-3 py-2">Full citation</th>
                   <th className="px-3 py-2">Context</th>
@@ -305,9 +305,33 @@ export default function UploadPage() {
                         value={r.term}
                         disabled={r.saved}
                         onChange={(e) => updateRow(idx, { term: e.target.value })}
-                        placeholder="(enter term)"
+                        placeholder="enter the term"
                         className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
                       />
+                      {!r.saved && r.termCandidates.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {r.termCandidates.map((cand) => {
+                            const active = r.term.trim().toLowerCase() === cand.toLowerCase();
+                            return (
+                              <button
+                                key={cand}
+                                type="button"
+                                onClick={() => updateRow(idx, { term: cand })}
+                                className={`rounded-full border px-2 py-0.5 text-xs ${
+                                  active
+                                    ? "border-neutral-900 bg-neutral-900 text-white"
+                                    : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"
+                                }`}
+                              >
+                                {cand}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {!r.saved && r.termCandidates.length === 0 && (
+                        <p className="mt-1 text-xs text-neutral-400">no guess — type the term</p>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div>{r.author}</div>

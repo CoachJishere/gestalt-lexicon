@@ -7,7 +7,6 @@ import { harvardCitation } from "@/lib/citation";
 type FormState = {
   id?: string;
   term: string;
-  definition: string;
   author: string;
   year: string;
   article_title: string;
@@ -19,7 +18,6 @@ type FormState = {
 
 const emptyForm: FormState = {
   term: "",
-  definition: "",
   author: "",
   year: "",
   article_title: "",
@@ -43,7 +41,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
     return terms.filter((t) => {
       return (
         t.term.toLowerCase().includes(q) ||
-        (t.definition ?? "").toLowerCase().includes(q) ||
         (t.author ?? "").toLowerCase().includes(q) ||
         (t.article_title ?? "").toLowerCase().includes(q) ||
         (t.source ?? "").toLowerCase().includes(q)
@@ -60,7 +57,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
     setSaving(true);
     const payload = {
       term: form.term.trim(),
-      definition: form.definition.trim() || null,
       author: form.author.trim() || null,
       year: form.year ? parseInt(form.year, 10) : null,
       article_title: form.article_title.trim() || null,
@@ -101,7 +97,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
     setForm({
       id: t.id,
       term: t.term,
-      definition: t.definition ?? "",
       author: t.author ?? "",
       year: t.year?.toString() ?? "",
       article_title: t.article_title ?? "",
@@ -145,14 +140,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
             </Field>
             <Field label="Author (e.g. Kepner, J.)">
               <input value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="Definition" full>
-              <textarea
-                value={form.definition}
-                onChange={(e) => setForm({ ...form, definition: e.target.value })}
-                rows={2}
-                className={inputCls}
-              />
             </Field>
             <Field label="Year">
               <input value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} className={inputCls} inputMode="numeric" />
@@ -224,7 +211,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
                 <tr key={t.id} className="border-t border-neutral-100 align-top">
                   <td className="px-4 py-3">
                     <div className="font-medium">{t.term}</div>
-                    {t.definition && <div className="mt-1 text-xs text-neutral-600">{t.definition}</div>}
                   </td>
                   <td className="px-4 py-3">
                     {t.author ?? "—"}

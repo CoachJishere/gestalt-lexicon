@@ -6,7 +6,7 @@ export const revalidate = 0;
 export default async function Home() {
   const { data, error } = await supabase
     .from("gestalt_terms")
-    .select("*")
+    .select("id,term,author,year,article_title,source,page,url,contributed_by,created_at,updated_at")
     .order("term", { ascending: true });
 
   const terms: GestaltTerm[] = (data ?? []) as GestaltTerm[];

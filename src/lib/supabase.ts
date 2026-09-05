@@ -8,7 +8,6 @@ export const supabase = createClient(url, anon);
 export type GestaltTerm = {
   id: string;
   term: string;
-  definition: string | null;
   author: string | null;
   year: number | null;
   article_title: string | null;
