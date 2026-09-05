@@ -26,6 +26,10 @@ All notable changes to gestalt-lexicon.
   GitHub repo `CoachJishere/gestalt-lexicon`, fixed git author (`~/.gitconfig`
   `user.name` was the placeholder "Your Name" → "Jonathan Miller").
 
+- **Changed** — force light mode (`color-scheme: light`, removed the
+  `prefers-color-scheme: dark` block). The app was only ever styled for light;
+  native form controls were rendering dark on dark-mode systems.
+
 ### Known / outstanding
 
 - Vercel project `gestalt-lexicon` is not yet linked to the GitHub repo — deploys
