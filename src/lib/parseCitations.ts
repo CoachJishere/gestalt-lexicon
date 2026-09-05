@@ -210,18 +210,28 @@ export function findReferencesSection(
 export function extractReferences(essay: string): ReferenceEntry[] {
   const section = findReferencesSection(essay);
   if (!section) return [];
-  const refsBlock = essay.slice(section.contentStart).trim();
+  let refsBlock = essay.slice(section.contentStart).trim();
   if (!refsBlock) return [];
 
-  // Split into entries: blank line OR line that starts with a capital letter followed by (typical surname) after a newline.
-  // Heuristic: split on blank lines first; if that yields 1 entry, fall back to splitting on newlines that precede "Surname, X." patterns.
-  let rawEntries: string[] = refsBlock.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
-  if (rawEntries.length <= 1) {
-    rawEntries = refsBlock
-      .split(/\n(?=[A-Z][A-Za-z'À-ɏ-]+,)/g)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
+  // Strip page-break debris that PDF extraction leaves between entries:
+  // bare page numbers ("11") and page markers ("-- 12 of 13 --").
+  refsBlock = refsBlock
+    .split("\n")
+    .filter((l) => !/^\s*\d{1,4}\s*$/.test(l) && !/^\s*--\s*\d+\s+of\s+\d+\s*--\s*$/i.test(l))
+    .join("\n");
+
+  // An author-date reference entry begins with "Surname, X." (initial) or
+  // "Surname, Firstname" — optionally more of the same joined by "and"/"&"/",".
+  // Split on a blank line OR a newline immediately before that pattern. This is
+  // deliberately strict so a mid-entry line wrap like "Gestalt\nReview, 2(1)"
+  // ("Review," looks like a surname) does NOT start a new entry.
+  const ENTRY_START = /[A-Z][A-Za-z'’À-ɏ-]+,\s+[A-Z](?:\.|[a-z]+\b)/;
+  const rawEntries: string[] = refsBlock
+    .split(new RegExp(`\\n\\s*\\n|\\n(?=${ENTRY_START.source})`))
+    .map((s) => s.trim())
+    .filter(Boolean)
+    // Drop fragments with no year paren (stray wrapped lines, headers).
+    .filter((s) => /\((1[5-9]\d{2}|20\d{2}|21\d{2})/.test(s));
 
   const out: ReferenceEntry[] = [];
   for (const raw of rawEntries) {
