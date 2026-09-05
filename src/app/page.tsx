@@ -21,6 +21,10 @@ export default async function Home() {
               A shared reference of Gestalt therapy terms with Harvard-style citations.
               Anyone can add or edit entries.
             </p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Contribute citations from your own graded essay — the essay itself is never uploaded or stored,
+              only the citation details you choose to add.
+            </p>
           </div>
           <a
             href="/upload"

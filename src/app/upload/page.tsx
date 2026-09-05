@@ -124,6 +124,42 @@ export default function UploadPage() {
         essay&apos;s References section.
       </p>
 
+      <details className="group mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <summary className="flex cursor-pointer list-none items-center gap-2 font-medium">
+          <span aria-hidden="true">🔒</span>
+          Your essay is never stored — what happens to it, and what gets saved
+          <span aria-hidden="true" className="ml-auto text-emerald-700 group-open:hidden">show</span>
+          <span aria-hidden="true" className="ml-auto hidden text-emerald-700 group-open:inline">hide</span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          <p>
+            This tool exists so you can contribute the citations from your essay <span className="font-medium">without
+            handing over the essay itself</span>. Graded essays are confidential and stay that way.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded border border-emerald-200 bg-white/60 p-3">
+              <p className="mb-1 font-medium text-emerald-800">✓ Saved to the shared lexicon</p>
+              <p>
+                Only the citation details you choose to add: term, author, year, page, article / chapter title, source,
+                and the name you optionally type. These are public bibliographic facts.
+              </p>
+            </div>
+            <div className="rounded border border-emerald-200 bg-white/60 p-3">
+              <p className="mb-1 font-medium text-emerald-800">✗ Never saved anywhere</p>
+              <p>
+                Your essay. The file (or pasted text) is read once in memory to pull out citations, then discarded —
+                it is not written to a database, saved to disk, or logged. The surrounding sentences shown next to each
+                citation are for your review only and are never saved.
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-emerald-800">
+            The essay text is sent to our server for that one parsing step and immediately dropped. Nothing about its
+            content is kept, and nothing is saved until you review the results and click to add.
+          </p>
+        </div>
+      </details>
+
       <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="mb-2 font-medium">Before you upload — read this:</p>
         <ul className="ml-5 list-disc space-y-1">

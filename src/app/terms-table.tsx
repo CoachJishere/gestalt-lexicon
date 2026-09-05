@@ -97,16 +97,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
     setShowForm(false);
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this term?")) return;
-    const { error } = await supabase.from("gestalt_terms").delete().eq("id", id);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-    setTerms((prev) => prev.filter((t) => t.id !== id));
-  }
-
   function startEdit(t: GestaltTerm) {
     setForm({
       id: t.id,
@@ -252,9 +242,6 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => startEdit(t)} className="text-xs text-neutral-600 underline hover:text-neutral-900">
                       edit
-                    </button>
-                    <button onClick={() => handleDelete(t.id)} className="ml-3 text-xs text-red-600 underline hover:text-red-800">
-                      delete
                     </button>
                   </td>
                 </tr>
