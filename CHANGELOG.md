@@ -52,8 +52,11 @@ All notable changes to gestalt-lexicon.
   left in place but unused.
 - **Added** — term-extraction now produces a ranked list of candidate terms per
   citation (apposition, "defined as", quoted phrase, block-quote subject,
-  sentence subject, nearest section heading, words-before). The upload review
-  shows them as clickable chips.
+  sentence subject, nearest section heading, words-before, and — as a last
+  resort — the matched reference's article title). Author possessives
+  ("Yontef's") are filtered out. The upload review shows candidates as
+  clickable chips. On the Laura Banks essay: best candidate is right or close
+  on ~17 of 21 rows; the reviewer picks a chip or types the rest.
 - **Fixed** — a narrative citation whose author sits several words before the
   year ("...Goodman (PHG) refer to as zones of awareness (1951)") is now
   captured, guarded by a reference-list check so a wrong author is never
