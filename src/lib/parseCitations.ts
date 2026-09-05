@@ -1,3 +1,5 @@
+import { isKnownConcept } from "./gestaltConcepts";
+
 // Harvard-style citation extraction.
 // Handles in-text citations like:
 //   (Parlett, 1991)
@@ -19,6 +21,7 @@ export type InTextCitation = {
   contextBefore: string;    // up to ~12 words before the open paren (raw)
   guessedTerm: string;      // best single term guess (termCandidates[0])
   termCandidates: string[]; // ordered best-first, for the reviewer to pick from
+  topStrong: boolean;       // leading candidate came from an explicit-naming signal
 };
 
 export type ReferenceEntry = {
@@ -33,6 +36,7 @@ export type ReferenceEntry = {
 export type ExtractedCitation = {
   term: string;              // best guess (termCandidates[0] ?? "")
   termCandidates: string[];  // clickable options for the reviewer
+  confidence: "high" | "low"; // low = weak term guess, likely a claim not a concept
   author: string;
   year: number;
   page: string | null;
@@ -164,6 +168,27 @@ const BAD_SINGLE_TERMS = new Set([
   "attention", "focus", "difference", "understanding", "exploration", "emphasized",
 ]);
 
+// Words that mark a phrase as a claim/action rather than a named concept.
+const CLAIM_WORDS = new Set([
+  "deepen", "deepens", "emerge", "emerges", "emerging", "flourish", "flourishes",
+  "allow", "allows", "allowing", "enable", "enables", "enabling", "support",
+  "supports", "reflect", "reflects", "reflecting", "notice", "notices", "noticing",
+  "attend", "attends", "attending", "happen", "happens", "occur", "occurs",
+  "become", "becomes", "becoming", "arise", "arises", "arising", "develop",
+  "develops", "developing", "generate", "generates", "generative", "heighten",
+  "heightens", "heightening", "exaggerate", "suspend", "describe", "describes",
+  "organise", "organize", "interpret", "explore", "explores", "exploring",
+  "increase", "increases", "increasing", "create", "creates", "creating",
+]);
+// "to emerge", "can be generative", "that allows", "which deepens" ...
+const CLAIMY_PHRASE =
+  /\b(?:to|can|could|may|might|will|would|should|must|be|being|been)\s+\w+|\b(?:that|which|where|when|whereby|whilst|allowing|enabling)\b/i;
+
+function looksLikeClaim(s: string): boolean {
+  if (CLAIMY_PHRASE.test(s)) return true;
+  return s.split(/\s+/).some((w) => CLAIM_WORDS.has(w.toLowerCase()));
+}
+
 function cleanTerm(s: string): string {
   let out = s
     .toLowerCase()
@@ -188,13 +213,21 @@ function isUsefulTerm(s: string): boolean {
   if (TERM_EDGE_JUNK.test(words[words.length - 1]) || TERM_EDGE_JUNK.test(words[0])) return false;
   if (words.length === 1 && BAD_SINGLE_TERMS.has(words[0])) return false;
   if (/^\d/.test(s)) return false;
+  if (looksLikeClaim(s)) return false;
   return true;
 }
 
 // Build an ordered, deduped set of candidate terms for one citation.
 // `before` ends at the citation (already scoped to the current section);
 // `after` starts just past it. Ordered best-first for a term registry.
-function buildTermCandidates(before: string, after: string, heading: string | null): string[] {
+// `topStrong` is true when the leading candidate came from an explicit-naming
+// signal (apposition / "defined as" / quoted term / heading) rather than a
+// bare word-grab, which feeds the HIGH/LOW confidence rating.
+function buildTermCandidates(
+  before: string,
+  after: string,
+  heading: string | null
+): { candidates: string[]; topStrong: boolean } {
   const flatBefore = before.replace(/\s+/g, " ")
     // drop an intervening "(i.e., ...)" / "(e.g. ...)" gloss between term and cite
     .replace(/\s*\((?:i\.?e\.?|e\.?g\.?|cf\.?)[^)]*\)\s*$/i, " ")
@@ -212,68 +245,69 @@ function buildTermCandidates(before: string, after: string, heading: string | nu
     .trim();
   if (flatBeforeFraming.length < 12) flatBeforeFraming = flatBefore;
 
-  const cands: string[] = [];
-  const push = (raw: string | null | undefined) => {
+  const cands: { term: string; strong: boolean }[] = [];
+  const push = (raw: string | null | undefined, strong: boolean) => {
     if (!raw) return;
     const c = cleanTerm(raw);
-    if (isUsefulTerm(c) && !cands.some((x) => x === c)) cands.push(c);
+    if (isUsefulTerm(c) && !cands.some((x) => x.term === c)) cands.push({ term: c, strong });
   };
 
   // A. Apposition right after the cite: "(cite) or contact is ..." — an explicit naming.
   const apposition = flatAfter.match(/^\s*or\s+([A-Za-z][A-Za-z '–-]{2,40}?)(?:\s+(?:is|are|was|which|that|and)\b|[.,;])/i);
-  if (apposition) push(apposition[1]);
+  if (apposition) push(apposition[1], true);
 
   // B. "X is/are defined (simply) as | X refers to | known as | called | termed"
   const definedAs = flatBefore.match(
     /([A-Za-z][A-Za-z '–-]{2,40}?)\s+(?:(?:is|are|was|were)\s+(?:simply\s+|often\s+|generally\s+)?(?:defined\s+(?:simply\s+)?as|referred to as|known as|termed|called)|refers?\s+to|means)\b/i
   );
-  if (definedAs) push(definedAs[1].split(/[,.;:]/).pop());
+  if (definedAs) push(definedAs[1].split(/[,.;:]/).pop(), true);
 
   // C. "refer(red) to as X" | "naming (the) 'X'" | "concept/notion of X" | "the term X"
   const namedAfterPhrase = flatBefore.match(
     /(?:refer(?:red|s)? to as|naming(?:\s+the)?|concept of|notion of|the term)\s+['‘]?([A-Za-z][A-Za-z '–-]{2,45}?)['’]?\s*$/i
   );
-  if (namedAfterPhrase) push(namedAfterPhrase[1]);
+  if (namedAfterPhrase) push(namedAfterPhrase[1], true);
 
   // D. Short quoted phrase immediately before the cite ("'meeting of difference'").
   //    Long quotes are source quotations, not the term — skip those here.
   const quotedBefore = flatBefore.match(/['‘]([^'’]{3,60})['’]\s*$/);
   if (quotedBefore) {
     const q = quotedBefore[1].trim();
-    if (wc(q) <= 4) push(q);
+    if (wc(q) <= 4) push(q, true);
     else {
       const qSubject = q.match(/^([A-Za-z][A-Za-z '–-]{2,32}?)\s+(?:is|are|was|were|involves|means|refers)\b/i);
-      if (qSubject) push(qSubject[1]);
+      if (qSubject) push(qSubject[1], true);
     }
   }
 
   // D2. Block quote: a lead-in ending ":" then a quoted-clause subject
   //     ("...Yontef's: Full awareness is the process ...").
   const blockQuote = flatBefore.match(/:\s+([A-Z][A-Za-z '–-]{2,40}?)\s+(?:is|are|involves|means|refers)\b/);
-  if (blockQuote) push(blockQuote[1]);
+  if (blockQuote) push(blockQuote[1], true);
 
   // E. Subject of the sentence containing the cite.
   const sentence = flatBeforeFraming.replace(/^.*(?:[.!?]["'’”)]?\s+)(?=[A-Z])/, "");
   const subject = sentence
     .replace(/^(?:In |When |While |Given that |Although |Because |Moreover, |However, |Lastly, |Beyond [^,]+, |This kind of |Take |Stating that )/i, "")
     .match(/^([A-Za-z][A-Za-z '–-]{2,40}?)\s+(?:is|are|was|were|has|have|posits|describes?|allows?|invites?|emerges?|involves?|can|often|also|directly)\b/i);
-  if (subject) push(subject[1]);
+  if (subject) push(subject[1], false);
 
   // F. Words immediately before the cite (original heuristic), on framing text.
-  push(guessTerm(flatBeforeFraming));
+  push(guessTerm(flatBeforeFraming), false);
 
   // G. Nearest section heading (already filtered to term-shaped headings).
-  push(heading);
+  push(heading, true);
 
   // Drop a candidate that is fully contained in an earlier, more specific
   // (<=4-word) candidate — e.g. drop "difference" when "meeting of difference"
   // already leads. Keep more-specific extensions of an earlier candidate.
-  const kept: string[] = [];
+  const kept: { term: string; strong: boolean }[] = [];
   for (const c of cands) {
-    if (kept.some((k) => k !== c && k.includes(c) && wc(k) <= 4)) continue;
+    if (kept.some((k) => k.term !== c.term && k.term.includes(c.term) && wc(k.term) <= 4)) continue;
     kept.push(c);
   }
-  return kept.slice(0, 4);
+  const top = kept.slice(0, 4);
+  return { candidates: top.map((c) => c.term), topStrong: top[0]?.strong ?? false };
 }
 
 // Splits "Perls, Hefferline & Goodman" or "Perls et al." -> first author last name.
@@ -394,7 +428,11 @@ export function extractInText(essay: string): InTextCitation[] {
       const firstAuthorLastName = beforeYear ? extractFirstLastName(beforeYear) : "";
       if (!firstAuthorLastName && authorCandidates.length === 0) continue;
 
-      const termCandidates = buildTermCandidates(effectiveBefore, windowAfter, heading);
+      const { candidates: termCandidates, topStrong } = buildTermCandidates(
+        effectiveBefore,
+        windowAfter,
+        heading
+      );
 
       out.push({
         authors: beforeYear,
@@ -406,6 +444,7 @@ export function extractInText(essay: string): InTextCitation[] {
         contextBefore: effectiveContext.slice(-120),
         guessedTerm: termCandidates[0] ?? "",
         termCandidates,
+        topStrong,
       });
     }
   }
@@ -591,16 +630,23 @@ export function extractCitations(essay: string): ExtractedCitation[] {
   const out: ExtractedCitation[] = [];
   for (const c of map.values()) {
     let candidates = c.termCandidates;
+    let fromTitle = false;
     // Last resort: if nothing was guessed, offer a term from the article title.
     if (candidates.length === 0 && c.ref?.article_title) {
       const head = c.ref.article_title.split(/[:—–]/)[0].trim();
       const conjunct = /\band\b/.test(head) ? head.split(/\s+and\s+/i).pop()!.trim() : head;
       const t = cleanTerm(conjunct.split(/\s+/).length <= 3 ? conjunct : head);
-      if (isUsefulTerm(t)) candidates = [t];
+      if (isUsefulTerm(t)) { candidates = [t]; fromTitle = true; }
     }
+    const term = candidates[0] ?? "";
+    // HIGH when the term is a recognised Gestalt concept, or came from an
+    // explicit-naming signal. Everything else is LOW (likely a claim, not a term).
+    const confidence: "high" | "low" =
+      term && (isKnownConcept(term) || (c.topStrong && !fromTitle)) ? "high" : "low";
     out.push({
-      term: candidates[0] ?? "",
+      term,
       termCandidates: candidates,
+      confidence,
       author: c.ref?.author ?? c.authors,
       year: c.year,
       page: c.page,

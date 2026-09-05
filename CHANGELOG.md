@@ -64,6 +64,23 @@ All notable changes to gestalt-lexicon.
 - **Changed** — a source cited for several different concepts now yields one row
   per concept instead of collapsing to one.
 
+- **Added** — term-quality & pollution controls (see `docs/adr/0002`):
+  - `src/lib/gestaltConcepts.ts` — a ~180-term Gestalt vocabulary checklist
+    (no authors/definitions). Drives confidence, "new term" badges, and
+    autocomplete on every term field.
+  - Every extracted citation gets `confidence: high | low`. Shape filters reject
+    claim/verb guesses ("deepen", "silence can be generative").
+  - Upload review: only HIGH-confidence, page-bearing, not-already-in-lexicon
+    rows are pre-checked. Low-confidence / duplicate rows show greyed + badged.
+  - **Page numbers required** — a row with no page/locator can't be saved
+    (inline editable page field); home entries missing one get a "no page" badge.
+  - Future uploads only need to contribute *new* terms — rows whose term is
+    already in the lexicon are flagged and unchecked.
+- **Added** — soft **delete** button on the home page (migration
+  `gestalt_terms_add_deleted_at`; confirm dialog; sets `deleted_at`, recoverable).
+- **Decided** — citation *attribution* (seminal author) is out of scope; nobody
+  can verify it reliably. Registry is term + whatever citation the essay used.
+
 ### Known / outstanding
 
 - Vercel project `gestalt-lexicon` is not yet linked to the GitHub repo — deploys

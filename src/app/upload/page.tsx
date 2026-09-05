@@ -1,15 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { harvardCitation } from "@/lib/citation";
 import type { ExtractedCitation } from "@/lib/parseCitations";
+import { CONCEPT_SUGGESTIONS, isKnownConcept, sameTerm } from "@/lib/gestaltConcepts";
 
 type Row = ExtractedCitation & {
   include: boolean;
   saved: boolean;
+  exists: boolean; // term already in the lexicon
 };
+
+const hasPage = (r: { page: string | null }) => !!r.page && r.page.trim().length > 0;
 
 export default function UploadPage() {
   const [tab, setTab] = useState<"file" | "paste">("file");
@@ -22,7 +26,20 @@ export default function UploadPage() {
   const [savingAll, setSavingAll] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [existingTerms, setExistingTerms] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Terms already in the lexicon — future uploads only need to add *new* ones.
+  useEffect(() => {
+    supabase
+      .from("gestalt_terms")
+      .select("term")
+      .is("deleted_at", null)
+      .then(({ data }) => setExistingTerms((data ?? []).map((r) => r.term as string)));
+  }, []);
+
+  const alreadyInLexicon = (term: string) =>
+    !!term && existingTerms.some((t) => sameTerm(t, term));
 
   const ACCEPT_RE = /\.(pdf|docx|txt|md)$/i;
   function acceptFile(f: File | undefined | null) {
@@ -73,7 +90,18 @@ export default function UploadPage() {
       if (cits.length === 0) {
         setError("No citations found. Make sure the essay uses Harvard-style (Author, Year) citations.");
       }
-      setRows(cits.map((c) => ({ ...c, include: true, saved: false })));
+      setRows(
+        cits.map((c) => {
+          const exists = alreadyInLexicon(c.term);
+          return {
+            ...c,
+            saved: false,
+            exists,
+            // Pre-check only confident, page-bearing, not-already-present rows.
+            include: c.confidence === "high" && hasPage(c) && !exists,
+          };
+        })
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to parse");
     }
@@ -83,12 +111,19 @@ export default function UploadPage() {
   async function handleSaveAll() {
     setSaveResult(null);
     setSavingAll(true);
-    const toSave = rows
+    const checked = rows
       .map((r, idx) => ({ r, idx }))
       .filter(({ r }) => r.include && !r.saved && r.term.trim());
 
+    const missingPage = checked.filter(({ r }) => !hasPage(r));
+    const toSave = checked.filter(({ r }) => hasPage(r));
+
     if (toSave.length === 0) {
-      setSaveResult("Nothing to save. Make sure each included row has a term.");
+      setSaveResult(
+        missingPage.length > 0
+          ? `Nothing saved — ${missingPage.length} checked row${missingPage.length === 1 ? "" : "s"} still need${missingPage.length === 1 ? "s" : ""} a page number.`
+          : "Nothing to save. Check at least one row and give it a term."
+      );
       setSavingAll(false);
       return;
     }
@@ -97,7 +132,7 @@ export default function UploadPage() {
       term: r.term.trim(),
       author: r.author || null,
       year: r.year || null,
-      page: r.page,
+      page: r.page ? r.page.trim() : null,
       article_title: r.article_title,
       source: r.source,
       contributed_by: contributor.trim() || null,
@@ -110,13 +145,14 @@ export default function UploadPage() {
       return;
     }
     const savedCount = data?.length ?? 0;
-    setRows((prev) =>
-      prev.map((r, idx) => {
-        const wasSaved = toSave.find((t) => t.idx === idx);
-        return wasSaved ? { ...r, saved: true } : r;
-      })
-    );
-    setSaveResult(`Added ${savedCount} term${savedCount === 1 ? "" : "s"} to the lexicon.`);
+    const savedIdx = new Set(toSave.map((t) => t.idx));
+    setRows((prev) => prev.map((r, idx) => (savedIdx.has(idx) ? { ...r, saved: true } : r)));
+    setExistingTerms((prev) => [...prev, ...payload.map((p) => p.term)]);
+    const tail =
+      missingPage.length > 0
+        ? ` ${missingPage.length} row${missingPage.length === 1 ? "" : "s"} skipped — no page number.`
+        : "";
+    setSaveResult(`Added ${savedCount} term${savedCount === 1 ? "" : "s"} to the lexicon.${tail}`);
   }
 
   function updateRow(idx: number, patch: Partial<Row>) {
@@ -302,24 +338,44 @@ export default function UploadPage() {
             </div>
           </div>
           {saveResult && <p className="mb-3 text-sm text-neutral-700">{saveResult}</p>}
+          {(() => {
+            const live = rows.filter((r) => !r.saved);
+            const dupes = live.filter((r) => r.exists).length;
+            const low = live.filter((r) => !r.exists && r.confidence === "low").length;
+            const noPage = live.filter((r) => r.include && !hasPage(r)).length;
+            return (
+              <p className="mb-2 text-xs text-neutral-600">
+                {live.filter((r) => r.include).length} checked to add
+                {dupes > 0 && <> · {dupes} already in the lexicon (skipped)</>}
+                {low > 0 && <> · {low} low-confidence (unchecked)</>}
+                {noPage > 0 && <> · <span className="text-amber-700">{noPage} need a page number</span></>}
+              </p>
+            );
+          })()}
           <div className="mb-3 rounded border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
-            <p className="mb-1 font-medium">Please review each row before saving:</p>
+            <p className="mb-1 font-medium">How to read this:</p>
             <ul className="ml-4 list-disc space-y-0.5">
               <li>
-                <span className="font-medium">The term is a guess.</span> Each row shows a few candidate terms as
-                buttons (from the heading, the sentence, quoted phrases) — click the right one, or type your own.
-                The parser never invents a citation, but it can guess the wrong term.
+                <span className="font-medium">Only confident rows are pre-checked.</span> Greyed rows are
+                low-confidence (the term guess is weak, or it looks like a claim rather than a concept) or already in
+                the lexicon — check one deliberately if it belongs.
               </li>
               <li>
-                <span className="font-medium">Amber-flagged rows have no matching reference.</span> The article title
-                and source will be blank. Either skip them, or save and fill in the details on the main page afterwards.
+                <span className="font-medium">The term is a guess.</span> Click a candidate chip or type your own.
+                A <span className="rounded bg-amber-100 px-1">new term</span> badge means it&apos;s not on the known
+                Gestalt-concept list — double-check it&apos;s a real concept.
               </li>
               <li>
-                <span className="font-medium">Uncheck anything you don&apos;t want saved</span> — duplicates, off-topic
-                citations, references to methods rather than concepts, etc.
+                <span className="font-medium">Every citation needs a page number</span> (or an ebook chapter/paragraph).
+                Rows without one can&apos;t be saved — add it from the essay.
               </li>
             </ul>
           </div>
+          <datalist id="concept-suggestions">
+            {CONCEPT_SUGGESTIONS.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
           <div className="overflow-x-auto rounded-lg border border-neutral-200">
             <table className="w-full text-sm">
               <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-600">
@@ -332,68 +388,99 @@ export default function UploadPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, idx) => (
-                  <tr key={idx} className={`border-t border-neutral-100 align-top ${r.saved ? "opacity-50" : ""}`}>
-                    <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={r.include}
-                        disabled={r.saved}
-                        onChange={(e) => updateRow(idx, { include: e.target.checked })}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={r.term}
-                        disabled={r.saved}
-                        onChange={(e) => updateRow(idx, { term: e.target.value })}
-                        placeholder="enter the term"
-                        className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
-                      />
-                      {!r.saved && r.termCandidates.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {r.termCandidates.map((cand) => {
-                            const active = r.term.trim().toLowerCase() === cand.toLowerCase();
-                            return (
-                              <button
-                                key={cand}
-                                type="button"
-                                onClick={() => updateRow(idx, { term: cand })}
-                                className={`rounded-full border px-2 py-0.5 text-xs ${
-                                  active
-                                    ? "border-neutral-900 bg-neutral-900 text-white"
-                                    : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"
-                                }`}
-                              >
-                                {cand}
-                              </button>
-                            );
-                          })}
+                {rows.map((r, idx) => {
+                  const dim = !r.saved && (r.exists || r.confidence === "low");
+                  const newTerm = !!r.term.trim() && !isKnownConcept(r.term);
+                  const pageMissing = r.include && !hasPage(r);
+                  return (
+                    <tr
+                      key={idx}
+                      className={`border-t border-neutral-100 align-top ${r.saved ? "opacity-50" : dim ? "bg-neutral-50/70 text-neutral-500" : ""}`}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={r.include}
+                          disabled={r.saved}
+                          onChange={(e) => updateRow(idx, { include: e.target.checked })}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          value={r.term}
+                          list="concept-suggestions"
+                          disabled={r.saved}
+                          onChange={(e) => updateRow(idx, { term: e.target.value })}
+                          placeholder="enter the term"
+                          className="w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+                        />
+                        {!r.saved && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            {r.termCandidates.map((cand) => {
+                              const active = r.term.trim().toLowerCase() === cand.toLowerCase();
+                              return (
+                                <button
+                                  key={cand}
+                                  type="button"
+                                  onClick={() => updateRow(idx, { term: cand })}
+                                  className={`rounded-full border px-2 py-0.5 text-xs ${
+                                    active
+                                      ? "border-neutral-900 bg-neutral-900 text-white"
+                                      : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"
+                                  }`}
+                                >
+                                  {cand}
+                                </button>
+                              );
+                            })}
+                            {r.termCandidates.length === 0 && (
+                              <span className="text-xs text-neutral-400">no guess — type the term</span>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                          {r.exists && (
+                            <span className="rounded bg-neutral-200 px-1 text-neutral-600">already in lexicon</span>
+                          )}
+                          {!r.exists && r.confidence === "low" && (
+                            <span className="rounded bg-neutral-200 px-1 text-neutral-600">low confidence</span>
+                          )}
+                          {!r.exists && newTerm && (
+                            <span className="rounded bg-amber-100 px-1 text-amber-800">new term</span>
+                          )}
                         </div>
-                      )}
-                      {!r.saved && r.termCandidates.length === 0 && (
-                        <p className="mt-1 text-xs text-neutral-400">no guess — type the term</p>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div>{r.author}</div>
-                      <div className="text-xs text-neutral-600">
-                        {r.year}
-                        {r.page ? (/^\d/.test(r.page) ? `, p. ${r.page}` : `, ${r.page}`) : ""}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div>{harvardCitation(r) || <span className="text-neutral-400">—</span>}</div>
-                      {!r.matchedReference && (
-                        <div className="mt-1 text-xs text-amber-700">No matching entry in References section</div>
-                      )}
-                      {r.saved && <div className="mt-1 text-xs text-green-700">Saved ✓</div>}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-neutral-600">
-                      ...{r.contextBefore.trim()}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="text-neutral-900">{r.author}</div>
+                        <div className="mt-0.5 flex items-center gap-1 text-xs">
+                          <span className="text-neutral-600">{r.year}</span>
+                          <input
+                            value={r.page ?? ""}
+                            disabled={r.saved}
+                            onChange={(e) => updateRow(idx, { page: e.target.value || null })}
+                            placeholder="page *"
+                            className={`w-24 rounded border px-1.5 py-0.5 text-xs ${
+                              pageMissing ? "border-amber-400 bg-amber-50" : "border-neutral-300"
+                            }`}
+                          />
+                        </div>
+                        {pageMissing && (
+                          <div className="mt-1 text-[11px] text-amber-700">page number required to save</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="text-neutral-900">
+                          {harvardCitation(r) || <span className="text-neutral-400">—</span>}
+                        </div>
+                        {!r.matchedReference && (
+                          <div className="mt-1 text-xs text-amber-700">No matching entry in References section</div>
+                        )}
+                        {r.saved && <div className="mt-1 text-xs text-green-700">Saved ✓</div>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">...{r.contextBefore.trim()}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

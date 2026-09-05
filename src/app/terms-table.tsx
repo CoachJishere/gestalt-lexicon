@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { supabase, type GestaltTerm } from "@/lib/supabase";
 import { harvardCitation } from "@/lib/citation";
+import { CONCEPT_SUGGESTIONS, isKnownConcept } from "@/lib/gestaltConcepts";
 
 type FormState = {
   id?: string;
@@ -93,6 +94,19 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
     setShowForm(false);
   }
 
+  async function handleDelete(t: GestaltTerm) {
+    if (!confirm(`Delete "${t.term}"? It will be removed from the lexicon.`)) return;
+    const { error } = await supabase
+      .from("gestalt_terms")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", t.id);
+    if (error) {
+      alert(`Couldn't delete: ${error.message}`);
+      return;
+    }
+    setTerms((prev) => prev.filter((x) => x.id !== t.id));
+  }
+
   function startEdit(t: GestaltTerm) {
     setForm({
       id: t.id,
@@ -111,6 +125,11 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
 
   return (
     <div>
+      <datalist id="concept-suggestions">
+        {CONCEPT_SUGGESTIONS.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="search"
@@ -136,7 +155,12 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
           <h2 className="mb-3 text-lg font-medium">{form.id ? "Edit term" : "Add a term"}</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Term *">
-              <input value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value })} className={inputCls} />
+              <input
+                value={form.term}
+                list="concept-suggestions"
+                onChange={(e) => setForm({ ...form, term: e.target.value })}
+                className={inputCls}
+              />
             </Field>
             <Field label="Author (e.g. Kepner, J.)">
               <input value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} className={inputCls} />
@@ -211,6 +235,14 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
                 <tr key={t.id} className="border-t border-neutral-100 align-top">
                   <td className="px-4 py-3">
                     <div className="font-medium">{t.term}</div>
+                    <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                      {!isKnownConcept(t.term) && (
+                        <span className="rounded bg-amber-100 px-1 text-amber-800">new term</span>
+                      )}
+                      {!t.page && (
+                        <span className="rounded bg-amber-100 px-1 text-amber-800">no page</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {t.author ?? "—"}
@@ -225,9 +257,15 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
                       </a>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button onClick={() => startEdit(t)} className="text-xs text-neutral-600 underline hover:text-neutral-900">
                       edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t)}
+                      className="ml-3 text-xs text-red-600 underline hover:text-red-800"
+                    >
+                      delete
                     </button>
                   </td>
                 </tr>
