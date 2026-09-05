@@ -127,9 +127,8 @@ export default function UploadPage() {
       <details className="group mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
         <summary className="flex cursor-pointer list-none items-center gap-2 font-medium">
           <span aria-hidden="true">🔒</span>
-          Your essay is never stored — what happens to it, and what gets saved
-          <span aria-hidden="true" className="ml-auto text-emerald-700 group-open:hidden">show</span>
-          <span aria-hidden="true" className="ml-auto hidden text-emerald-700 group-open:inline">hide</span>
+          Your essay is never stored — learn more about how we use your data
+          <span aria-hidden="true" className="ml-auto text-emerald-700 transition-transform group-open:rotate-180">▾</span>
         </summary>
         <div className="mt-3 space-y-3">
           <p>
