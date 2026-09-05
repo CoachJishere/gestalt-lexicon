@@ -30,11 +30,12 @@ Also decided in this round:
 - Shape filters reject claim/verb candidates (`deepen`, `to emerge`,
   `silence can be generative`, clause fragments).
 - Every extracted row gets **`confidence: "high" | "low"`**.
-  - HIGH = the term matches the known-concept list, **or** it came from an
-    explicit-naming signal (apposition, "X is defined as", quoted term,
-    section heading).
-  - LOW = everything else (bare word-grab, sentence subject, article-title
-    fallback).
+  - HIGH = the term is on the known-concept list. Full stop.
+  - LOW = anything else. (A strong sentence position means "we're sure which
+    words we grabbed", not "these words are a real concept" — e.g. "commentary"
+    from a strong position is still LOW.)
+  - Confidence and the "not on concept list" badge are therefore the same
+    signal — one badge, not two overlapping ones.
 - **Only HIGH-confidence, page-bearing, not-already-present rows are
   pre-checked.** LOW rows are greyed and unchecked — the contributor opts them
   in deliberately.
@@ -47,9 +48,10 @@ Also decided in this round:
 
 - `src/lib/gestaltConcepts.ts` — a plain checklist of ~180 recognised terms.
   **No authors, references, or definitions** — purely vocabulary.
-- Uses: (a) raise confidence to HIGH on match, (b) badge non-matching terms
-  **"new term — check it's a real concept"**, (c) autocomplete (`<datalist>`)
-  in every term field so contributors converge on one spelling.
+- Uses: (a) a match is what makes a row HIGH confidence, (b) a non-match badges
+  the row **"not on concept list — check it belongs"** and leaves it unchecked,
+  (c) autocomplete (`<datalist>`) in every term field so contributors converge
+  on one spelling.
 - Grows freely as the registry does; lives in code, easy to edit.
 
 ### 3. Page numbers required

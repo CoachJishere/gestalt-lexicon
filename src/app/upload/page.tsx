@@ -340,39 +340,40 @@ export default function UploadPage() {
           {(() => {
             const live = rows.filter((r) => !r.saved);
             const dupes = live.filter((r) => alreadyInLexicon(r.term)).length;
-            const low = live.filter((r) => !alreadyInLexicon(r.term) && r.confidence === "low").length;
+            const unrec = live.filter(
+              (r) => !alreadyInLexicon(r.term) && r.term.trim() && !isKnownConcept(r.term)
+            ).length;
             const noPage = live.filter((r) => r.include && !alreadyInLexicon(r.term) && !hasPage(r)).length;
             return (
               <p className="mb-2 text-xs text-neutral-600">
                 {live.filter((r) => r.include).length} checked to add
-                {dupes > 0 && <> · {dupes} already in the lexicon (skipped)</>}
-                {low > 0 && <> · {low} low-confidence (unchecked)</>}
+                {dupes > 0 && <> · {dupes} already in the lexicon</>}
+                {unrec > 0 && <> · {unrec} not on the concept list (unchecked)</>}
                 {noPage > 0 && <> · <span className="text-amber-700">{noPage} need a page number</span></>}
               </p>
             );
           })()}
           <div className="mb-3 rounded border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
-            <p className="mb-1 font-medium">How to read this:</p>
+            <p className="mb-1 font-medium">Every row is one of three states:</p>
             <ul className="ml-4 list-disc space-y-0.5">
               <li>
-                <span className="font-medium">Only confident rows are pre-checked.</span> Greyed low-confidence rows
-                (weak term guess, or it reads as a claim rather than a concept) can be checked deliberately if they
-                belong.
+                <span className="font-medium">Recognised concept</span> — on the Gestalt-concept list, has a page.
+                Pre-checked. Just confirm the term and citation look right.
               </li>
               <li>
-                <span className="font-medium">Terms already in the lexicon are not added again.</span> Each term only
-                needs one citation — those rows are locked off. Change the term if the parser matched the wrong one.
+                <span className="rounded bg-amber-100 px-1">not on concept list</span> — greyed and unchecked. The
+                term isn&apos;t one we recognise (it may be a claim, not a concept). Check it deliberately only if it
+                really is a Gestalt term, or fix the term with a chip.
               </li>
               <li>
-                <span className="font-medium">The term is a guess.</span> Click a candidate chip or type your own.
-                A <span className="rounded bg-amber-100 px-1">new term</span> badge means it&apos;s not on the known
-                Gestalt-concept list — double-check it&apos;s a real concept.
-              </li>
-              <li>
-                <span className="font-medium">Every citation needs a page number</span> (or an ebook chapter/paragraph).
-                Rows without one can&apos;t be saved — add it from the essay.
+                <span className="rounded bg-neutral-200 px-1">already in lexicon</span> — locked. Each term needs
+                only one citation. Edit the term if the parser matched the wrong one.
               </li>
             </ul>
+            <p className="mt-1.5">
+              <span className="font-medium">Every citation needs a page number</span> (or an ebook chapter/paragraph) —
+              add it from the essay, or the row can&apos;t be saved.
+            </p>
           </div>
           <datalist id="concept-suggestions">
             {CONCEPT_SUGGESTIONS.map((c) => (
@@ -393,8 +394,8 @@ export default function UploadPage() {
               <tbody>
                 {rows.map((r, idx) => {
                   const exists = alreadyInLexicon(r.term);
-                  const dim = !r.saved && (exists || r.confidence === "low");
-                  const newTerm = !exists && !!r.term.trim() && !isKnownConcept(r.term);
+                  const unrecognised = !exists && !!r.term.trim() && !isKnownConcept(r.term);
+                  const dim = !r.saved && (exists || unrecognised);
                   const pageMissing = r.include && !exists && !hasPage(r);
                   return (
                     <tr
@@ -449,11 +450,10 @@ export default function UploadPage() {
                               already in lexicon — won&apos;t be added
                             </span>
                           )}
-                          {!exists && r.confidence === "low" && (
-                            <span className="rounded bg-neutral-200 px-1 text-neutral-600">low confidence</span>
-                          )}
-                          {newTerm && (
-                            <span className="rounded bg-amber-100 px-1 text-amber-800">new term</span>
+                          {unrecognised && (
+                            <span className="rounded bg-amber-100 px-1 text-amber-800">
+                              not on concept list — check it belongs
+                            </span>
                           )}
                         </div>
                       </td>

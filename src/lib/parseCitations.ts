@@ -639,10 +639,11 @@ export function extractCitations(essay: string): ExtractedCitation[] {
       if (isUsefulTerm(t)) { candidates = [t]; fromTitle = true; }
     }
     const term = candidates[0] ?? "";
-    // HIGH when the term is a recognised Gestalt concept, or came from an
-    // explicit-naming signal. Everything else is LOW (likely a claim, not a term).
-    const confidence: "high" | "low" =
-      term && (isKnownConcept(term) || (c.topStrong && !fromTitle)) ? "high" : "low";
+    // HIGH only when the term is on the recognised-Gestalt-concept checklist.
+    // A strong sentence position means "we're sure which words we grabbed", not
+    // "these words are a real concept" — so it doesn't earn HIGH on its own.
+    void fromTitle;
+    const confidence: "high" | "low" = term && isKnownConcept(term) ? "high" : "low";
     out.push({
       term,
       termCandidates: candidates,

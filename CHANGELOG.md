@@ -68,10 +68,14 @@ All notable changes to gestalt-lexicon.
   - `src/lib/gestaltConcepts.ts` — a ~180-term Gestalt vocabulary checklist
     (no authors/definitions). Drives confidence, "new term" badges, and
     autocomplete on every term field.
-  - Every extracted citation gets `confidence: high | low`. Shape filters reject
-    claim/verb guesses ("deepen", "silence can be generative").
-  - Upload review: only HIGH-confidence, page-bearing, not-already-in-lexicon
-    rows are pre-checked. Low-confidence / duplicate rows show greyed + badged.
+  - Every extracted citation gets `confidence: high | low` — **HIGH strictly
+    means the term is on the concept list**, nothing else (a strong sentence
+    position doesn't make junk like "commentary" a concept). Shape filters also
+    reject claim/verb guesses ("deepen", "silence can be generative").
+  - Upload review: three row states, one badge each — recognised concept
+    (pre-checked), "not on concept list" (greyed, unchecked), "already in
+    lexicon" (locked). Replaces the confusing overlapping "new term" /
+    "low confidence" badges.
   - **Page numbers required** — a row with no page/locator can't be saved
     (inline editable page field); home entries missing one get a "no page" badge.
   - Future uploads only contribute *new* terms — a row whose term is already in

@@ -237,7 +237,7 @@ export default function TermsTable({ initialTerms }: { initialTerms: GestaltTerm
                     <div className="font-medium">{t.term}</div>
                     <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
                       {!isKnownConcept(t.term) && (
-                        <span className="rounded bg-amber-100 px-1 text-amber-800">new term</span>
+                        <span className="rounded bg-amber-100 px-1 text-amber-800">not on concept list</span>
                       )}
                       {!t.page && (
                         <span className="rounded bg-amber-100 px-1 text-amber-800">no page</span>
