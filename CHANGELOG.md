@@ -18,9 +18,10 @@ All notable changes to gestalt-lexicon.
   intentionally **not** restored.
 - **Changed** `terms-table.tsx` — removed the per-row delete button and
   `handleDelete` (anon deletes are blocked by RLS; corrections happen via edit).
-- **Added** `/upload` — a collapsible "Your essay is never stored" panel
-  explaining what is saved (citation metadata only) and what is not (the essay
-  text, ever). Short version of the same note added to the home page header.
+- **Added** `/upload` — a collapsible "Your essay is never stored — learn more
+  about how we use your data" panel explaining what is saved (citation metadata
+  only) and what is not (the essay text, ever). Short version of the same note
+  added to the home page header.
 - **Repo** — committed the app (previously all uncommitted), created public
   GitHub repo `CoachJishere/gestalt-lexicon`, fixed git author (`~/.gitconfig`
   `user.name` was the placeholder "Your Name" → "Jonathan Miller").
