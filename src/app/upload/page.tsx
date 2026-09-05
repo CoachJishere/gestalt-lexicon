@@ -313,7 +313,7 @@ export default function UploadPage() {
                       <div>{r.author}</div>
                       <div className="text-xs text-neutral-600">
                         {r.year}
-                        {r.page ? `, p. ${r.page}` : ""}
+                        {r.page ? (/^\d/.test(r.page) ? `, p. ${r.page}` : `, ${r.page}`) : ""}
                       </div>
                     </td>
                     <td className="px-3 py-2">

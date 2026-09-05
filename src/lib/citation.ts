@@ -9,7 +9,8 @@ export function harvardCitation(t: Pick<GestaltTerm, "author" | "year" | "articl
   if (t.article_title) head += head ? ` '${t.article_title}'` : `'${t.article_title}'`;
   const tail: string[] = [];
   if (t.source) tail.push(t.source);
-  if (t.page) tail.push(`p. ${t.page}`);
+  // Numeric pages get a "p." prefix; ebook locators ("ch. 5, para. 62") are kept as-is.
+  if (t.page) tail.push(/^\d/.test(String(t.page)) ? `p. ${t.page}` : String(t.page));
   const tailStr = tail.join(", ");
   const joined = [head, tailStr].filter(Boolean).join(", ");
   return joined ? joined + "." : "";

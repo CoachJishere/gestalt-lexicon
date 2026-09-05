@@ -136,10 +136,19 @@ export function extractInText(essay: string): InTextCitation[] {
       let beforeYear = chunk.slice(0, yearMatch.index).replace(/[,\s]+$/, "").trim();
       const afterYear = chunk.slice((yearMatch.index ?? 0) + yearMatch[0].length).trim();
 
-      // Extract page info from afterYear: "p. 70", "pp. 69-81", ": 70", ", 70"
+      // Extract page / locator info from afterYear:
+      //   "p. 70", "pp. 69-81", ": 70", ", 70"        -> numeric page
+      //   "ch. 5, para. 62", "para. 5", "loc. 1200"   -> ebook locator, kept verbatim
       let page: string | null = null;
       const pageMatch = afterYear.match(/(?:pp?\.?\s*|:\s*|,\s*)(\d+(?:\s*[-–]\s*\d+)?)/);
-      if (pageMatch) page = pageMatch[1].replace(/\s+/g, "");
+      if (pageMatch) {
+        page = pageMatch[1].replace(/\s+/g, "");
+      } else {
+        const locMatch = afterYear.match(
+          /\b(?:ch(?:ap(?:ter)?)?\.?|para(?:graph)?\.?|sec(?:t(?:ion)?)?\.?|loc(?:ation)?\.?|§)\s*\d+(?:\s*,\s*(?:para(?:graph)?\.?|§)\s*\d+)?/i
+        );
+        if (locMatch) page = locMatch[0].replace(/\s+/g, " ").trim();
+      }
 
       let effectiveContext = contextBefore;
       if (!beforeYear) {
@@ -246,9 +255,11 @@ export function extractReferences(essay: string): ReferenceEntry[] {
         source = (srcMatch ? srcMatch[1] : rest).trim().replace(/[.,]$/, "") || null;
       }
     } else {
-      // No quoted title; whole afterYear probably "Book Title. Publisher." — treat first segment as source.
-      const firstSeg = afterYear.split(/[.,]/)[0]?.trim();
-      source = firstSeg || null;
+      // No quoted title; afterYear is usually "Book Title. Edition. City: Publisher."
+      // Split on the first sentence-period only, so titles containing commas
+      // ("Awareness, Dialogue and Process") or colons survive intact.
+      const firstSeg = afterYear.split(/\.(?:\s+|$)/)[0]?.trim();
+      source = firstSeg ? firstSeg.replace(/[.,]+$/, "") : null;
       article_title = null;
     }
 
@@ -291,12 +302,18 @@ export function extractCitations(essay: string): ExtractedCitation[] {
   const refs = extractReferences(essay);
   const acronyms = extractAcronymMap(body);
 
-  // Dedupe in-text by (firstAuthor|year|page) — keep the longest guessedTerm as the representative.
+  // Dedupe in-text by (firstAuthor|year|page/locator) — keep the longest
+  // guessedTerm as the representative. Acronym-expand the author first so
+  // "(PHG, 1951)" and a "Perls, Hefferline and Goodman ... (1951)" narrative
+  // collapse together. Distinct page/locator values (incl. ebook "ch. 5,
+  // para. 62") keep same-source citations apart.
   const map = new Map<string, InTextCitation>();
   for (const c of inText) {
-    const key = `${c.firstAuthorLastName.toLowerCase()}|${c.year}|${c.page ?? ""}`;
+    const lower = c.firstAuthorLastName.toLowerCase();
+    const name = (acronyms.get(lower) ?? lower).toLowerCase();
+    const key = `${name}|${c.year}|${c.page ?? ""}`;
     const prev = map.get(key);
-    if (!prev || (c.guessedTerm.length > prev.guessedTerm.length)) {
+    if (!prev || c.guessedTerm.length > prev.guessedTerm.length) {
       map.set(key, c);
     }
   }
