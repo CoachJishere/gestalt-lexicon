@@ -28,9 +28,10 @@ export async function POST(req: Request) {
         const result = await mammoth.extractRawText({ buffer: buf });
         text = result.value;
       } else if (name.endsWith(".pdf")) {
-        const { PDFParse } = await import("pdf-parse");
-        const parser = new PDFParse({ data: new Uint8Array(buf) });
-        const result = await parser.getText();
+        // unpdf ships a serverless build of pdf.js — no DOM globals, no worker.
+        const { extractText, getDocumentProxy } = await import("unpdf");
+        const pdf = await getDocumentProxy(new Uint8Array(buf));
+        const result = await extractText(pdf, { mergePages: true });
         text = result.text;
       } else {
         return NextResponse.json({ error: "Unsupported file type. Use .pdf, .docx, or .txt" }, { status: 400 });
