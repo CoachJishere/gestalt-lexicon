@@ -29,9 +29,11 @@ All notable changes to gestalt-lexicon.
 - **Changed** — force light mode (`color-scheme: light`, removed the
   `prefers-color-scheme: dark` block). The app was only ever styled for light;
   native form controls were rendering dark on dark-mode systems.
-- **Fixed** — PDF uploads were returning HTTP 500 (`Cannot find module
-  pdf.worker.mjs`). Added `serverExternalPackages: ['pdf-parse']` to
-  `next.config.ts`.
+- **Fixed** — PDF uploads were returning HTTP 500. `pdf-parse` (pdfjs-dist)
+  needed a bundler workaround locally and then still failed on Vercel with
+  `DOMMatrix is not defined`. Replaced it with `unpdf`, which ships a
+  serverless pdf.js build (no DOM globals, no worker). Verified end-to-end on
+  the live site with a real essay PDF.
 - **Fixed** — citation parser, from testing against a real graded essay
   (Laura Banks, "Awareness in Gestalt"):
   - ebook locators (`ch. 5, para. 62`) are captured instead of dropped;
