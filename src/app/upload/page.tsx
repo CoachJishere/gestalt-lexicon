@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { harvardCitation } from "@/lib/citation";
@@ -21,6 +21,19 @@ export default function UploadPage() {
   const [contributor, setContributor] = useState("");
   const [savingAll, setSavingAll] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const ACCEPT_RE = /\.(pdf|docx|txt|md)$/i;
+  function acceptFile(f: File | undefined | null) {
+    if (!f) return;
+    if (!ACCEPT_RE.test(f.name)) {
+      setError("Use a .pdf, .docx or .txt file.");
+      return;
+    }
+    setError(null);
+    setFile(f);
+  }
 
   async function handleParse() {
     setError(null);
@@ -201,14 +214,40 @@ export default function UploadPage() {
         {tab === "file" ? (
           <>
             <input
+              ref={fileInputRef}
               type="file"
               accept=".pdf,.docx,.txt,.md"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm"
+              onChange={(e) => acceptFile(e.target.files?.[0])}
+              className="sr-only"
             />
-            <p className="mt-2 text-xs text-neutral-500">
-              .pdf, .docx, .txt — make sure the file contains the References section.
-            </p>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragActive(false);
+                acceptFile(e.dataTransfer.files?.[0]);
+              }}
+              className={`flex w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-8 text-center text-sm transition-colors ${
+                dragActive
+                  ? "border-neutral-900 bg-neutral-50"
+                  : "border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50"
+              }`}
+            >
+              {file ? (
+                <>
+                  <span className="font-medium text-neutral-900">{file.name}</span>
+                  <span className="text-xs text-neutral-500">click to choose a different file</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-neutral-900">Choose a file or drop it here</span>
+                  <span className="text-xs text-neutral-500">.pdf, .docx or .txt — must include the References section</span>
+                </>
+              )}
+            </button>
           </>
         ) : (
           <>
