@@ -76,6 +76,15 @@ All notable changes to gestalt-lexicon.
     (pre-checked), "not on concept list" (greyed, unchecked), "already in
     lexicon" (locked). Replaces the confusing overlapping "new term" /
     "low confidence" badges.
+  - Review sorts recognised concepts first and **collapses the rest behind a
+    toggle** ("Show N rows not on the concept list / already in the lexicon").
+    A reflective commentary essay's default view is near-empty — the honest
+    signal that it has little for the lexicon.
+  - `conceptWithin()` — a candidate phrase containing a recognised concept
+    ("tendency towards confluence" → "confluence", "fully bracket" →
+    "bracketing", "co-created relational field" → "field") surfaces that
+    concept as the leading candidate.
+  - `.gitignore` now excludes all `.docx` / `.pdf` — test essays are confidential.
   - **Page numbers required** — a row with no page/locator can't be saved
     (inline editable page field); home entries missing one get a "no page" badge.
   - Future uploads only contribute *new* terms — a row whose term is already in
