@@ -29,6 +29,21 @@ All notable changes to gestalt-lexicon.
 - **Changed** — force light mode (`color-scheme: light`, removed the
   `prefers-color-scheme: dark` block). The app was only ever styled for light;
   native form controls were rendering dark on dark-mode systems.
+- **Fixed** — PDF uploads were returning HTTP 500 (`Cannot find module
+  pdf.worker.mjs`). Added `serverExternalPackages: ['pdf-parse']` to
+  `next.config.ts`.
+- **Fixed** — citation parser, from testing against a real graded essay
+  (Laura Banks, "Awareness in Gestalt"):
+  - ebook locators (`ch. 5, para. 62`) are captured instead of dropped;
+  - a source cited at different locators no longer over-merges into one row;
+  - book titles containing a comma (`Awareness, Dialogue and Process`) are no
+    longer truncated;
+  - PDF reference lists (no blank lines between entries, entries wrapped
+    mid-line) are now split correctly — previously the whole bibliography
+    collapsed into one scrambled entry (e.g. Buber's entry returned with
+    Fodor's article title and Latner's source).
+  - Result: the essay now extracts 16/16 citations with 16/16 reference
+    matches from `.pdf`, `.docx` and pasted text alike.
 
 ### Known / outstanding
 
