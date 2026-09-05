@@ -11,12 +11,14 @@
 
 export type InTextCitation = {
   authors: string;          // raw author string as written in the paren (e.g. "Perls et al.")
-  firstAuthorLastName: string; // normalized for matching ("Perls")
+  firstAuthorLastName: string; // normalized for matching ("Perls"); "" when it must be resolved against the reference list
+  authorCandidates: string[]; // surnames to try against the reference list, nearest-first (loose narrative form)
   year: number;
   page: string | null;
   rawMatch: string;         // the full "(...)" as found
   contextBefore: string;    // up to ~12 words before the open paren (raw)
-  guessedTerm: string;      // heuristic: last noun-ish phrase before the paren
+  guessedTerm: string;      // best single term guess (termCandidates[0])
+  termCandidates: string[]; // ordered best-first, for the reviewer to pick from
 };
 
 export type ReferenceEntry = {
@@ -29,7 +31,8 @@ export type ReferenceEntry = {
 };
 
 export type ExtractedCitation = {
-  term: string;
+  term: string;              // best guess (termCandidates[0] ?? "")
+  termCandidates: string[];  // clickable options for the reviewer
   author: string;
   year: number;
   page: string | null;
@@ -84,6 +87,192 @@ export function guessTerm(contextBefore: string): string {
   return collected.join(" ").toLowerCase();
 }
 
+// --- Section headings ------------------------------------------------------
+// Structural headings that are never a Gestalt term.
+const STRUCTURAL_HEADINGS = new Set([
+  "abstract", "introduction", "conclusion", "references", "bibliography",
+  "contents", "table of contents", "acknowledgements", "acknowledgments",
+  "appendix", "appendices", "methodology", "method", "methods", "results",
+  "discussion", "findings", "summary", "overview", "background", "literature review",
+]);
+
+export type Heading = { index: number; text: string };
+
+// Detect section headings from extracted text: a short standalone line with no
+// sentence punctuation, not a table-of-contents dotted line, followed by prose.
+export function findHeadings(text: string): Heading[] {
+  const out: Heading[] = [];
+  let offset = 0;
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineStart = offset;
+    offset += line.length + 1; // + "\n"
+    const t = line.trim();
+    if (t.length < 2 || t.length > 64) continue;
+    if (/\.{3,}/.test(t)) continue;                 // "Contact......... 5" (TOC)
+    if (/[.,;:]$/.test(t)) continue;                // ends mid-sentence / sentence
+    if (/\((?:1[5-9]\d{2}|20\d{2}|21\d{2})/.test(t)) continue; // contains a citation
+    if (/^[0-9\W]+$/.test(t)) continue;             // page number / rule
+    const words = t.split(/\s+/);
+    if (words.length > 9) continue;
+    if (!/^[A-Z‘'"(]/.test(t)) continue;
+    // next non-empty line should begin a sentence (paragraph body)
+    let next = "";
+    for (let j = i + 1; j < lines.length && j < i + 4; j++) {
+      if (lines[j].trim()) { next = lines[j].trim(); break; }
+    }
+    if (next && !/^[A-Z‘'"(]/.test(next)) continue;
+    out.push({ index: lineStart + (line.length - line.trimStart().length), text: t });
+  }
+  return out;
+}
+
+function nearestHeading(headings: Heading[], at: number): Heading | null {
+  let best: Heading | null = null;
+  for (const h of headings) {
+    if (h.index <= at && (!best || h.index > best.index)) best = h;
+  }
+  return best;
+}
+
+function headingTerm(h: Heading | null): string | null {
+  if (!h) return null;
+  const norm = h.text.toLowerCase().replace(/[:.]+$/, "").trim();
+  if (STRUCTURAL_HEADINGS.has(norm)) return null;
+  // Only use a heading that reads like a term: <=3 words, no colon, not a
+  // "Defining X" / "Heightening X" / "Conditions for X" section title.
+  if (norm.includes(":")) return null;
+  if (norm.split(/\s+/).length > 3) return null;
+  if (/^(defining|heightening|exploring|understanding|conditions?|introduction|towards?|approaches?)\b/.test(norm)) return null;
+  if (/\b(of|for|to|in|and)\b/.test(norm)) return null;
+  return norm;
+}
+
+// --- Term candidates ------------------------------------------------------
+const TERM_STOP_PREFIX =
+  /^(?:the|a|an|this|that|these|those|his|her|their|its|our|my|your|such|kind of|type of|form of|what|which)\s+/i;
+
+const TERM_EDGE_JUNK = /^(where|which|while|when|whom|whose|that|and|or|of|to|in|by|as|is|are)$/;
+
+// Single generic words that are never a useful lexicon term on their own.
+const BAD_SINGLE_TERMS = new Set([
+  "use", "experience", "naming", "situation", "founding", "what", "thing", "things",
+  "example", "process", "way", "ways", "concept", "idea", "work", "point", "part",
+  "kind", "form", "type", "sense", "view", "order", "need", "result", "aspect",
+  "dimension", "element", "feature", "practice", "approach", "model", "method",
+  "attention", "focus", "difference", "understanding", "exploration", "emphasized",
+]);
+
+function cleanTerm(s: string): string {
+  let out = s
+    .toLowerCase()
+    .replace(/[\s.,;:!?()'"‘’“”]+$/g, "")
+    .replace(/^[\s.,;:!?()'"‘’“”]+/g, "")
+    .replace(TERM_STOP_PREFIX, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Trim dangling function words from either end ("whole people where" -> "whole people").
+  let words = out.split(" ");
+  while (words.length > 1 && TERM_EDGE_JUNK.test(words[words.length - 1])) words.pop();
+  while (words.length > 1 && TERM_EDGE_JUNK.test(words[0])) words.shift();
+  return words.join(" ");
+}
+
+function isUsefulTerm(s: string): boolean {
+  if (s.length < 2 || s.length > 48) return false;
+  const words = s.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  if (words.every((w) => STOPWORDS.has(w.toLowerCase()))) return false;
+  if (TERM_EDGE_JUNK.test(words[words.length - 1]) || TERM_EDGE_JUNK.test(words[0])) return false;
+  if (words.length === 1 && BAD_SINGLE_TERMS.has(words[0])) return false;
+  if (/^\d/.test(s)) return false;
+  return true;
+}
+
+// Build an ordered, deduped set of candidate terms for one citation.
+// `before` ends at the citation (already scoped to the current section);
+// `after` starts just past it. Ordered best-first for a term registry.
+function buildTermCandidates(before: string, after: string, heading: string | null): string[] {
+  const flatBefore = before.replace(/\s+/g, " ")
+    // drop an intervening "(i.e., ...)" / "(e.g. ...)" gloss between term and cite
+    .replace(/\s*\((?:i\.?e\.?|e\.?g\.?|cf\.?)[^)]*\)\s*$/i, " ")
+    .trim();
+  const flatAfter = after.replace(/\s+/g, " ").trim();
+  const wc = (s: string) => s.split(/\s+/).filter(Boolean).length;
+  // Framing text = the author's own words, with any trailing quotation and any
+  // block-quote (a lead-in ending ":") removed, so the sentence-subject / words-
+  // before heuristics look at framing rather than at quoted source material.
+  let flatBeforeFraming = flatBefore
+    .replace(/['‘][^'’]+['’][^'’]{0,20}$/, " ")
+    .replace(/:\s+[A-Z][\s\S]*$/, " ")
+    .trim();
+  if (flatBeforeFraming.length < 12) flatBeforeFraming = flatBefore;
+
+  const cands: string[] = [];
+  const push = (raw: string | null | undefined) => {
+    if (!raw) return;
+    const c = cleanTerm(raw);
+    if (isUsefulTerm(c) && !cands.some((x) => x === c)) cands.push(c);
+  };
+
+  // A. Apposition right after the cite: "(cite) or contact is ..." — an explicit naming.
+  const apposition = flatAfter.match(/^\s*or\s+([A-Za-z][A-Za-z '–-]{2,40}?)(?:\s+(?:is|are|was|which|that|and)\b|[.,;])/i);
+  if (apposition) push(apposition[1]);
+
+  // B. "X is/are defined (simply) as | X refers to | known as | called | termed"
+  const definedAs = flatBefore.match(
+    /([A-Za-z][A-Za-z '–-]{2,40}?)\s+(?:(?:is|are|was|were)\s+(?:simply\s+|often\s+|generally\s+)?(?:defined\s+(?:simply\s+)?as|referred to as|known as|termed|called)|refers?\s+to|means)\b/i
+  );
+  if (definedAs) push(definedAs[1].split(/[,.;:]/).pop());
+
+  // C. "refer(red) to as X" | "naming (the) 'X'" | "concept/notion of X" | "the term X"
+  const namedAfterPhrase = flatBefore.match(
+    /(?:refer(?:red|s)? to as|naming(?:\s+the)?|concept of|notion of|the term)\s+['‘]?([A-Za-z][A-Za-z '–-]{2,45}?)['’]?\s*$/i
+  );
+  if (namedAfterPhrase) push(namedAfterPhrase[1]);
+
+  // D. Short quoted phrase immediately before the cite ("'meeting of difference'").
+  //    Long quotes are source quotations, not the term — skip those here.
+  const quotedBefore = flatBefore.match(/['‘]([^'’]{3,60})['’]\s*$/);
+  if (quotedBefore) {
+    const q = quotedBefore[1].trim();
+    if (wc(q) <= 4) push(q);
+    else {
+      const qSubject = q.match(/^([A-Za-z][A-Za-z '–-]{2,32}?)\s+(?:is|are|was|were|involves|means|refers)\b/i);
+      if (qSubject) push(qSubject[1]);
+    }
+  }
+
+  // D2. Block quote: a lead-in ending ":" then a quoted-clause subject
+  //     ("...Yontef's: Full awareness is the process ...").
+  const blockQuote = flatBefore.match(/:\s+([A-Z][A-Za-z '–-]{2,40}?)\s+(?:is|are|involves|means|refers)\b/);
+  if (blockQuote) push(blockQuote[1]);
+
+  // E. Subject of the sentence containing the cite.
+  const sentence = flatBeforeFraming.replace(/^.*(?:[.!?]["'’”)]?\s+)(?=[A-Z])/, "");
+  const subject = sentence
+    .replace(/^(?:In |When |While |Given that |Although |Because |Moreover, |However, |Lastly, |Beyond [^,]+, |This kind of |Take |Stating that )/i, "")
+    .match(/^([A-Za-z][A-Za-z '–-]{2,40}?)\s+(?:is|are|was|were|has|have|posits|describes?|allows?|invites?|emerges?|involves?|can|often|also|directly)\b/i);
+  if (subject) push(subject[1]);
+
+  // F. Words immediately before the cite (original heuristic), on framing text.
+  push(guessTerm(flatBeforeFraming));
+
+  // G. Nearest section heading (already filtered to term-shaped headings).
+  push(heading);
+
+  // Drop a candidate that is fully contained in an earlier, more specific
+  // (<=4-word) candidate — e.g. drop "difference" when "meeting of difference"
+  // already leads. Keep more-specific extensions of an earlier candidate.
+  const kept: string[] = [];
+  for (const c of cands) {
+    if (kept.some((k) => k !== c && k.includes(c) && wc(k) <= 4)) continue;
+    kept.push(c);
+  }
+  return kept.slice(0, 4);
+}
+
 // Splits "Perls, Hefferline & Goodman" or "Perls et al." -> first author last name.
 function extractFirstLastName(authorsRaw: string): string {
   const cleaned = authorsRaw.replace(/\bet al\.?/gi, "").trim();
@@ -115,15 +304,44 @@ function extractNarrativeAuthor(
   return { author: m[1], start: m.index ?? 0 };
 }
 
+// Loose narrative form: a bare "(1951)" whose author sits several words earlier,
+// e.g. "...what Perls, Hefferline and Goodman (PHG) refer to as zones of
+// awareness (1951)". Collect candidate surnames from the preceding sentence,
+// nearest-first. These are only trusted if the reference list confirms them.
+const LOOSE_AUTHOR_RE =
+  /([A-Z][A-Za-zÀ-ɏ'-]{2,}(?:\s+(?:and|&)\s+[A-Z][A-Za-zÀ-ɏ'-]{2,}| et al\.?)?)(?:\s*\([A-Z]{2,6}\))?/g;
+
+function looseAuthorCandidates(textBeforeParen: string): string[] {
+  // stay within the current sentence
+  const sentence = textBeforeParen.replace(/^[\s\S]*[.!?]\s+/, "");
+  const names: string[] = [];
+  let m: RegExpExecArray | null;
+  const re = new RegExp(LOOSE_AUTHOR_RE);
+  while ((m = re.exec(sentence)) !== null) {
+    const last = extractFirstLastName(m[1]);
+    if (last && !names.includes(last)) names.push(last);
+  }
+  return names.reverse(); // nearest to the citation first
+}
+
 export function extractInText(essay: string): InTextCitation[] {
   const out: InTextCitation[] = [];
+  const headings = findHeadings(essay);
   let m: RegExpExecArray | null;
   const re = new RegExp(IN_TEXT_RE);
   while ((m = re.exec(essay)) !== null) {
     const inside = m[1];
     const start = m.index;
+    const parenEnd = start + m[0].length;
     const contextStart = Math.max(0, start - 200);
     const contextBefore = essay.slice(contextStart, start);
+    const hd = nearestHeading(headings, start);
+    const heading = headingTerm(hd);
+    // Scope the "before" window to the current section so a preceding heading
+    // or earlier paragraph can't leak into the term guess.
+    const beforeFloor = Math.max(0, start - 420, hd ? hd.index + hd.text.length : 0);
+    const windowBefore = essay.slice(beforeFloor, start);
+    const windowAfter = essay.slice(parenEnd, parenEnd + 200);
 
     // Split grouped citations by semicolon: "(Parlett, 1991; Yontef, 1993)"
     const chunks = inside.split(";").map((c) => c.trim()).filter(Boolean);
@@ -151,30 +369,40 @@ export function extractInText(essay: string): InTextCitation[] {
       }
 
       let effectiveContext = contextBefore;
+      let effectiveBefore = windowBefore;
+      let authorCandidates: string[] = [];
       if (!beforeYear) {
-        // Narrative form: author is outside the parens, just before it.
+        // Narrative form: author is outside the parens.
         // Only the first chunk can be narrative — grouped citations after a
         // semicolon always carry their own author.
         if (chunkIdx !== 0) continue;
         const narrative = extractNarrativeAuthor(contextBefore);
-        if (!narrative) continue;
-        beforeYear = narrative.author;
-        effectiveContext = contextBefore.slice(0, narrative.start).replace(/[,\s]+$/, "");
+        if (narrative) {
+          beforeYear = narrative.author;
+          effectiveContext = contextBefore.slice(0, narrative.start).replace(/[,\s]+$/, "");
+          effectiveBefore = windowBefore.slice(0, windowBefore.length - (contextBefore.length - narrative.start));
+        } else {
+          // Loose narrative: author is further back. Defer to reference-list check.
+          authorCandidates = looseAuthorCandidates(contextBefore);
+          if (authorCandidates.length === 0) continue;
+        }
       }
 
-      const firstAuthorLastName = extractFirstLastName(beforeYear);
-      if (!firstAuthorLastName) continue;
+      const firstAuthorLastName = beforeYear ? extractFirstLastName(beforeYear) : "";
+      if (!firstAuthorLastName && authorCandidates.length === 0) continue;
 
-      const guessed = guessTerm(effectiveContext);
+      const termCandidates = buildTermCandidates(effectiveBefore, windowAfter, heading);
 
       out.push({
         authors: beforeYear,
         firstAuthorLastName,
+        authorCandidates,
         year,
         page,
         rawMatch: m[0],
         contextBefore: effectiveContext.slice(-120),
-        guessedTerm: guessed,
+        guessedTerm: termCandidates[0] ?? "",
+        termCandidates,
       });
     }
   }
@@ -312,39 +540,63 @@ export function extractCitations(essay: string): ExtractedCitation[] {
   const refs = extractReferences(essay);
   const acronyms = extractAcronymMap(body);
 
-  // Dedupe in-text by (firstAuthor|year|page/locator) — keep the longest
-  // guessedTerm as the representative. Acronym-expand the author first so
-  // "(PHG, 1951)" and a "Perls, Hefferline and Goodman ... (1951)" narrative
-  // collapse together. Distinct page/locator values (incl. ebook "ch. 5,
-  // para. 62") keep same-source citations apart.
-  const map = new Map<string, InTextCitation>();
+  const refFor = (lastName: string, year: number): ReferenceEntry | undefined => {
+    const lower = lastName.toLowerCase();
+    const lookup = (acronyms.get(lower) ?? lower).toLowerCase();
+    return refs.find(
+      (r) => r.firstAuthorLastName.toLowerCase() === lookup && r.year === year
+    );
+  };
+
+  // Resolve the author for each citation. Loose-narrative citations (no author
+  // adjacent to the year) are only kept when the reference list confirms one of
+  // their candidate surnames — this is the guard against misattribution.
+  type Resolved = InTextCitation & { ref?: ReferenceEntry; resolvedName: string };
+  const resolved: Resolved[] = [];
   for (const c of inText) {
-    const lower = c.firstAuthorLastName.toLowerCase();
+    if (c.firstAuthorLastName) {
+      resolved.push({ ...c, ref: refFor(c.firstAuthorLastName, c.year), resolvedName: c.firstAuthorLastName });
+      continue;
+    }
+    const hit = c.authorCandidates
+      .map((name) => ({ name, ref: refFor(name, c.year) }))
+      .find((x) => x.ref);
+    if (!hit) continue; // unconfirmed loose citation — drop rather than guess
+    resolved.push({ ...c, ref: hit.ref, resolvedName: hit.name, authors: hit.ref!.author });
+  }
+
+  // Dedupe by (author | year | page/locator | best term). The same source cited
+  // for different concepts stays as separate rows — a term registry wants both
+  // "unfinished business -> PHG 1951" and "present-moment focus -> PHG 1951".
+  // When two collapse, merge their candidate lists so the reviewer sees every option.
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const map = new Map<string, Resolved>();
+  for (const c of resolved) {
+    const lower = c.resolvedName.toLowerCase();
     const name = (acronyms.get(lower) ?? lower).toLowerCase();
-    const key = `${name}|${c.year}|${c.page ?? ""}`;
+    const key = `${name}|${c.year}|${c.page ?? ""}|${norm(c.guessedTerm)}`;
     const prev = map.get(key);
-    if (!prev || c.guessedTerm.length > prev.guessedTerm.length) {
+    if (!prev) {
       map.set(key, c);
+    } else {
+      const merged = [...prev.termCandidates];
+      for (const t of c.termCandidates) if (!merged.some((x) => norm(x) === norm(t))) merged.push(t);
+      map.set(key, { ...prev, termCandidates: merged.slice(0, 5) });
     }
   }
 
   const out: ExtractedCitation[] = [];
   for (const c of map.values()) {
-    const lower = c.firstAuthorLastName.toLowerCase();
-    const expanded = acronyms.get(lower);
-    const lookup = expanded ? expanded.toLowerCase() : lower;
-    const ref = refs.find(
-      (r) => r.firstAuthorLastName.toLowerCase() === lookup && r.year === c.year
-    );
     out.push({
-      term: c.guessedTerm,
-      author: ref?.author ?? c.authors,
+      term: c.termCandidates[0] ?? "",
+      termCandidates: c.termCandidates,
+      author: c.ref?.author ?? c.authors,
       year: c.year,
       page: c.page,
-      article_title: ref?.article_title ?? null,
-      source: ref?.source ?? null,
+      article_title: c.ref?.article_title ?? null,
+      source: c.ref?.source ?? null,
       contextBefore: c.contextBefore,
-      matchedReference: Boolean(ref),
+      matchedReference: Boolean(c.ref),
     });
   }
   // Sort by term, then author
