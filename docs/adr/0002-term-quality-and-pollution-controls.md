@@ -36,8 +36,12 @@ Also decided in this round:
   - LOW = everything else (bare word-grab, sentence subject, article-title
     fallback).
 - **Only HIGH-confidence, page-bearing, not-already-present rows are
-  pre-checked.** LOW / duplicate rows are shown greyed and unchecked — the
-  contributor opts them in deliberately.
+  pre-checked.** LOW rows are greyed and unchecked — the contributor opts them
+  in deliberately.
+- **A term already in the lexicon is hard-locked** — its checkbox is disabled,
+  and `handleSaveAll` filters it out regardless. Each term needs only one
+  citation; future uploads contribute *new* terms only. The lock is reactive:
+  editing the term (the parser matched the wrong one) re-enables the row.
 
 ### 2. Known-Gestalt-concepts list
 

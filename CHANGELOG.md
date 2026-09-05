@@ -74,8 +74,9 @@ All notable changes to gestalt-lexicon.
     rows are pre-checked. Low-confidence / duplicate rows show greyed + badged.
   - **Page numbers required** — a row with no page/locator can't be saved
     (inline editable page field); home entries missing one get a "no page" badge.
-  - Future uploads only need to contribute *new* terms — rows whose term is
-    already in the lexicon are flagged and unchecked.
+  - Future uploads only contribute *new* terms — a row whose term is already in
+    the lexicon is **hard-locked** (checkbox disabled, filtered from save;
+    re-enables if the term is edited).
 - **Added** — soft **delete** button on the home page (migration
   `gestalt_terms_add_deleted_at`; confirm dialog; sets `deleted_at`, recoverable).
 - **Decided** — citation *attribution* (seminal author) is out of scope; nobody

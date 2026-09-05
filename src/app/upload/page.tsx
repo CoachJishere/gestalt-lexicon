@@ -10,7 +10,6 @@ import { CONCEPT_SUGGESTIONS, isKnownConcept, sameTerm } from "@/lib/gestaltConc
 type Row = ExtractedCitation & {
   include: boolean;
   saved: boolean;
-  exists: boolean; // term already in the lexicon
 };
 
 const hasPage = (r: { page: string | null }) => !!r.page && r.page.trim().length > 0;
@@ -91,16 +90,12 @@ export default function UploadPage() {
         setError("No citations found. Make sure the essay uses Harvard-style (Author, Year) citations.");
       }
       setRows(
-        cits.map((c) => {
-          const exists = alreadyInLexicon(c.term);
-          return {
-            ...c,
-            saved: false,
-            exists,
-            // Pre-check only confident, page-bearing, not-already-present rows.
-            include: c.confidence === "high" && hasPage(c) && !exists,
-          };
-        })
+        cits.map((c) => ({
+          ...c,
+          saved: false,
+          // Pre-check only confident, page-bearing, not-already-present rows.
+          include: c.confidence === "high" && hasPage(c) && !alreadyInLexicon(c.term),
+        }))
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to parse");
@@ -115,14 +110,18 @@ export default function UploadPage() {
       .map((r, idx) => ({ r, idx }))
       .filter(({ r }) => r.include && !r.saved && r.term.trim());
 
-    const missingPage = checked.filter(({ r }) => !hasPage(r));
-    const toSave = checked.filter(({ r }) => hasPage(r));
+    // A term already in the lexicon is never re-added, whatever the checkbox says.
+    const alreadyThere = checked.filter(({ r }) => alreadyInLexicon(r.term));
+    const notDup = checked.filter(({ r }) => !alreadyInLexicon(r.term));
+    const missingPage = notDup.filter(({ r }) => !hasPage(r));
+    const toSave = notDup.filter(({ r }) => hasPage(r));
 
     if (toSave.length === 0) {
+      const bits: string[] = [];
+      if (missingPage.length) bits.push(`${missingPage.length} still need a page number`);
+      if (alreadyThere.length) bits.push(`${alreadyThere.length} already in the lexicon`);
       setSaveResult(
-        missingPage.length > 0
-          ? `Nothing saved — ${missingPage.length} checked row${missingPage.length === 1 ? "" : "s"} still need${missingPage.length === 1 ? "s" : ""} a page number.`
-          : "Nothing to save. Check at least one row and give it a term."
+        bits.length ? `Nothing saved — ${bits.join("; ")}.` : "Nothing to save. Check at least one row and give it a term."
       );
       setSavingAll(false);
       return;
@@ -148,10 +147,10 @@ export default function UploadPage() {
     const savedIdx = new Set(toSave.map((t) => t.idx));
     setRows((prev) => prev.map((r, idx) => (savedIdx.has(idx) ? { ...r, saved: true } : r)));
     setExistingTerms((prev) => [...prev, ...payload.map((p) => p.term)]);
-    const tail =
-      missingPage.length > 0
-        ? ` ${missingPage.length} row${missingPage.length === 1 ? "" : "s"} skipped — no page number.`
-        : "";
+    const skipped: string[] = [];
+    if (missingPage.length) skipped.push(`${missingPage.length} no page`);
+    if (alreadyThere.length) skipped.push(`${alreadyThere.length} already in lexicon`);
+    const tail = skipped.length ? ` (${skipped.join(", ")} skipped)` : "";
     setSaveResult(`Added ${savedCount} term${savedCount === 1 ? "" : "s"} to the lexicon.${tail}`);
   }
 
@@ -340,9 +339,9 @@ export default function UploadPage() {
           {saveResult && <p className="mb-3 text-sm text-neutral-700">{saveResult}</p>}
           {(() => {
             const live = rows.filter((r) => !r.saved);
-            const dupes = live.filter((r) => r.exists).length;
-            const low = live.filter((r) => !r.exists && r.confidence === "low").length;
-            const noPage = live.filter((r) => r.include && !hasPage(r)).length;
+            const dupes = live.filter((r) => alreadyInLexicon(r.term)).length;
+            const low = live.filter((r) => !alreadyInLexicon(r.term) && r.confidence === "low").length;
+            const noPage = live.filter((r) => r.include && !alreadyInLexicon(r.term) && !hasPage(r)).length;
             return (
               <p className="mb-2 text-xs text-neutral-600">
                 {live.filter((r) => r.include).length} checked to add
@@ -356,9 +355,13 @@ export default function UploadPage() {
             <p className="mb-1 font-medium">How to read this:</p>
             <ul className="ml-4 list-disc space-y-0.5">
               <li>
-                <span className="font-medium">Only confident rows are pre-checked.</span> Greyed rows are
-                low-confidence (the term guess is weak, or it looks like a claim rather than a concept) or already in
-                the lexicon — check one deliberately if it belongs.
+                <span className="font-medium">Only confident rows are pre-checked.</span> Greyed low-confidence rows
+                (weak term guess, or it reads as a claim rather than a concept) can be checked deliberately if they
+                belong.
+              </li>
+              <li>
+                <span className="font-medium">Terms already in the lexicon are not added again.</span> Each term only
+                needs one citation — those rows are locked off. Change the term if the parser matched the wrong one.
               </li>
               <li>
                 <span className="font-medium">The term is a guess.</span> Click a candidate chip or type your own.
@@ -389,9 +392,10 @@ export default function UploadPage() {
               </thead>
               <tbody>
                 {rows.map((r, idx) => {
-                  const dim = !r.saved && (r.exists || r.confidence === "low");
-                  const newTerm = !!r.term.trim() && !isKnownConcept(r.term);
-                  const pageMissing = r.include && !hasPage(r);
+                  const exists = alreadyInLexicon(r.term);
+                  const dim = !r.saved && (exists || r.confidence === "low");
+                  const newTerm = !exists && !!r.term.trim() && !isKnownConcept(r.term);
+                  const pageMissing = r.include && !exists && !hasPage(r);
                   return (
                     <tr
                       key={idx}
@@ -400,8 +404,9 @@ export default function UploadPage() {
                       <td className="px-3 py-2">
                         <input
                           type="checkbox"
-                          checked={r.include}
-                          disabled={r.saved}
+                          checked={r.include && !exists}
+                          disabled={r.saved || exists}
+                          title={exists ? "This term is already in the lexicon" : undefined}
                           onChange={(e) => updateRow(idx, { include: e.target.checked })}
                         />
                       </td>
@@ -439,13 +444,15 @@ export default function UploadPage() {
                           </div>
                         )}
                         <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
-                          {r.exists && (
-                            <span className="rounded bg-neutral-200 px-1 text-neutral-600">already in lexicon</span>
+                          {exists && (
+                            <span className="rounded bg-neutral-200 px-1 text-neutral-600">
+                              already in lexicon — won&apos;t be added
+                            </span>
                           )}
-                          {!r.exists && r.confidence === "low" && (
+                          {!exists && r.confidence === "low" && (
                             <span className="rounded bg-neutral-200 px-1 text-neutral-600">low confidence</span>
                           )}
-                          {!r.exists && newTerm && (
+                          {newTerm && (
                             <span className="rounded bg-amber-100 px-1 text-amber-800">new term</span>
                           )}
                         </div>
