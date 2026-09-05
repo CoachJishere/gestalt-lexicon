@@ -167,6 +167,7 @@ const BAD_SINGLE_TERMS = new Set([
 function cleanTerm(s: string): string {
   let out = s
     .toLowerCase()
+    .replace(/['’]s\b/g, "")                        // "yontef's" -> "yontef" (then dropped as junk)
     .replace(/[\s.,;:!?()'"‘’“”]+$/g, "")
     .replace(/^[\s.,;:!?()'"‘’“”]+/g, "")
     .replace(TERM_STOP_PREFIX, "")
@@ -206,6 +207,8 @@ function buildTermCandidates(before: string, after: string, heading: string | nu
   let flatBeforeFraming = flatBefore
     .replace(/['‘][^'’]+['’][^'’]{0,20}$/, " ")
     .replace(/:\s+[A-Z][\s\S]*$/, " ")
+    // "...definition of awareness is Gary Yontef's" / "...detailed by Eva Gold"
+    .replace(/\s+(?:is|by|of|per|following|according to)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]?s?\s*$/, " ")
     .trim();
   if (flatBeforeFraming.length < 12) flatBeforeFraming = flatBefore;
 
@@ -587,9 +590,17 @@ export function extractCitations(essay: string): ExtractedCitation[] {
 
   const out: ExtractedCitation[] = [];
   for (const c of map.values()) {
+    let candidates = c.termCandidates;
+    // Last resort: if nothing was guessed, offer a term from the article title.
+    if (candidates.length === 0 && c.ref?.article_title) {
+      const head = c.ref.article_title.split(/[:—–]/)[0].trim();
+      const conjunct = /\band\b/.test(head) ? head.split(/\s+and\s+/i).pop()!.trim() : head;
+      const t = cleanTerm(conjunct.split(/\s+/).length <= 3 ? conjunct : head);
+      if (isUsefulTerm(t)) candidates = [t];
+    }
     out.push({
-      term: c.termCandidates[0] ?? "",
-      termCandidates: c.termCandidates,
+      term: candidates[0] ?? "",
+      termCandidates: candidates,
       author: c.ref?.author ?? c.authors,
       year: c.year,
       page: c.page,
