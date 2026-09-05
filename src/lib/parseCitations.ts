@@ -1,4 +1,4 @@
-import { isKnownConcept } from "./gestaltConcepts";
+import { conceptWithin, isKnownConcept } from "./gestaltConcepts";
 
 // Harvard-style citation extraction.
 // Handles in-text citations like:
@@ -166,6 +166,10 @@ const BAD_SINGLE_TERMS = new Set([
   "kind", "form", "type", "sense", "view", "order", "need", "result", "aspect",
   "dimension", "element", "feature", "practice", "approach", "model", "method",
   "attention", "focus", "difference", "understanding", "exploration", "emphasized",
+  "meaning", "intention", "interpreting", "words", "remembering",
+  // assignment-structure words (transcript / recording commentaries)
+  "commentary", "recording", "session", "transcript", "reflection", "excerpt",
+  "extract", "clip", "audio", "video", "assignment", "essay", "paper", "recap",
 ]);
 
 // Words that mark a phrase as a claim/action rather than a named concept.
@@ -297,6 +301,16 @@ function buildTermCandidates(
 
   // G. Nearest section heading (already filtered to term-shaped headings).
   push(heading, true);
+
+  // If a candidate phrase contains a recognised concept ("tendency towards
+  // confluence" -> "confluence"), surface that concept as a leading option.
+  for (const c of [...cands]) {
+    const within = conceptWithin(c.term);
+    if (within) {
+      const w = cleanTerm(within);
+      if (isUsefulTerm(w) && !cands.some((x) => x.term === w)) cands.unshift({ term: w, strong: true });
+    }
+  }
 
   // Drop a candidate that is fully contained in an earlier, more specific
   // (<=4-word) candidate — e.g. drop "difference" when "meeting of difference"

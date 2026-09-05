@@ -25,6 +25,7 @@ export default function UploadPage() {
   const [savingAll, setSavingAll] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [showOthers, setShowOthers] = useState(false);
   const [existingTerms, setExistingTerms] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,14 +90,18 @@ export default function UploadPage() {
       if (cits.length === 0) {
         setError("No citations found. Make sure the essay uses Harvard-style (Author, Year) citations.");
       }
-      setRows(
-        cits.map((c) => ({
-          ...c,
-          saved: false,
-          // Pre-check only confident, page-bearing, not-already-present rows.
-          include: c.confidence === "high" && hasPage(c) && !alreadyInLexicon(c.term),
-        }))
-      );
+      const mapped = cits.map((c) => ({
+        ...c,
+        saved: false,
+        // Pre-check only confident, page-bearing, not-already-present rows.
+        include: c.confidence === "high" && hasPage(c) && !alreadyInLexicon(c.term),
+      }));
+      // Recognised concepts first, then unrecognised, then already-in-lexicon.
+      const rank = (r: Row) =>
+        alreadyInLexicon(r.term) ? 2 : isKnownConcept(r.term) ? 0 : 1;
+      mapped.sort((a, b) => rank(a) - rank(b) || a.term.localeCompare(b.term));
+      setRows(mapped);
+      setShowOthers(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to parse");
     }
@@ -341,7 +346,7 @@ export default function UploadPage() {
             const live = rows.filter((r) => !r.saved);
             const dupes = live.filter((r) => alreadyInLexicon(r.term)).length;
             const unrec = live.filter(
-              (r) => !alreadyInLexicon(r.term) && r.term.trim() && !isKnownConcept(r.term)
+              (r) => !alreadyInLexicon(r.term) && !isKnownConcept(r.term)
             ).length;
             const noPage = live.filter((r) => r.include && !alreadyInLexicon(r.term) && !hasPage(r)).length;
             return (
@@ -392,7 +397,13 @@ export default function UploadPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, idx) => {
+                {(() => {
+                  const items = rows.map((r, idx) => ({ r, idx }));
+                  const isOther = ({ r }: { r: Row }) =>
+                    !r.saved && (alreadyInLexicon(r.term) || !r.term.trim() || !isKnownConcept(r.term));
+                  const primary = items.filter((x) => !isOther(x));
+                  const others = items.filter(isOther);
+                  const renderRow = ({ r, idx }: { r: Row; idx: number }) => {
                   const exists = alreadyInLexicon(r.term);
                   const unrecognised = !exists && !!r.term.trim() && !isKnownConcept(r.term);
                   const dim = !r.saved && (exists || unrecognised);
@@ -487,7 +498,28 @@ export default function UploadPage() {
                       <td className="px-3 py-2 text-xs text-neutral-500">...{r.contextBefore.trim()}</td>
                     </tr>
                   );
-                })}
+                  };
+                  return (
+                    <>
+                      {primary.map(renderRow)}
+                      {others.length > 0 && (
+                        <tr className="border-t border-neutral-200 bg-neutral-50">
+                          <td colSpan={5} className="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setShowOthers((s) => !s)}
+                              className="text-xs font-medium text-neutral-600 underline hover:text-neutral-900"
+                            >
+                              {showOthers ? "Hide" : "Show"} {others.length} row{others.length === 1 ? "" : "s"} not on
+                              the concept list / already in the lexicon
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      {showOthers && others.map(renderRow)}
+                    </>
+                  );
+                })()}
               </tbody>
             </table>
           </div>

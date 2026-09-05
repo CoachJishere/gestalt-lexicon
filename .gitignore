@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# student essays dropped in for testing — never commit (confidential)
+docs/*.docx
+docs/*.pdf
+*.docx
+*.pdf
+
 # debug
 npm-debug.log*
 yarn-debug.log*

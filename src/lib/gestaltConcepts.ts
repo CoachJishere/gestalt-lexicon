@@ -124,6 +124,25 @@ export function isKnownConcept(term: string): boolean {
   return NORMALISED.has(singular) || NORMALISED.has(n.replace(/ing$/, "e"));
 }
 
+/** If a recognised concept sits inside a longer phrase ("tendency towards
+ *  confluence" -> "confluence", "fully bracket" -> "bracketing"), return it so
+ *  it can be surfaced as a candidate. Returns the longest such concept. */
+export function conceptWithin(text: string): string | null {
+  const n = ` ${normaliseTerm(text)} `;
+  if (n.trim().length < 3) return null;
+  let best: string | null = null;
+  for (const c of GESTALT_CONCEPTS) {
+    if (c.includes("/")) continue;
+    const nc = normaliseTerm(c);
+    if (!nc || nc === normaliseTerm(text)) continue;
+    const stem = nc.replace(/ing$/, "").replace(/e$/, "");
+    if (n.includes(` ${nc} `) || n.includes(` ${stem} `) || n.includes(` ${stem}e `)) {
+      if (!best || nc.length > normaliseTerm(best).length) best = c;
+    }
+  }
+  return best;
+}
+
 /** The display list for autocomplete (deduped, original casing, sorted). */
 export const CONCEPT_SUGGESTIONS: string[] = [...new Set(GESTALT_CONCEPTS)]
   .filter((t) => !t.includes("/"))
