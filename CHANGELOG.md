@@ -47,6 +47,20 @@ All notable changes to gestalt-lexicon.
   - Result: the essay now extracts 16/16 citations with 16/16 reference
     matches from `.pdf`, `.docx` and pasted text alike.
 
+- **Changed** — the registry is now **term + citation only**. Removed the
+  Definition field from the add/edit form and the home table; the DB column is
+  left in place but unused.
+- **Added** — term-extraction now produces a ranked list of candidate terms per
+  citation (apposition, "defined as", quoted phrase, block-quote subject,
+  sentence subject, nearest section heading, words-before). The upload review
+  shows them as clickable chips.
+- **Fixed** — a narrative citation whose author sits several words before the
+  year ("...Goodman (PHG) refer to as zones of awareness (1951)") is now
+  captured, guarded by a reference-list check so a wrong author is never
+  guessed. Previously dropped.
+- **Changed** — a source cited for several different concepts now yields one row
+  per concept instead of collapsing to one.
+
 ### Known / outstanding
 
 - Vercel project `gestalt-lexicon` is not yet linked to the GitHub repo — deploys
